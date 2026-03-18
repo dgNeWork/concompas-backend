@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/dgNeWork/concompas-backend#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.2",
     "dotenv": "^17.3.1",
     "express": "^5.2.1"
   },

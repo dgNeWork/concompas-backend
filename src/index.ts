@@ -2,7 +2,9 @@ import express from 'express';
 import dotenv from 'dotenv';
 
 // Cargamos las variables de entorno desde el archivo .env
+// Debe ejecutarse antes de importar cualquier módulo que use variables de entorno
 dotenv.config();
+
 
 // Creamos la instancia principal de la aplicación Express
 const app = express();
