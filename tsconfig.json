@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    // Carpeta de entrada (código fuente) y carpeta de salida (JS compilado)
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    // Usamos CommonJS para compatibilidad con Node.js y las librerías del proyecto
+    "module": "commonjs",
+    "target": "es2020",
+
+    // Tipos globales disponibles en todo el proyecto
+    "lib": ["es2020"],
+    "types": ["node"],
+
+    // Permite importar archivos JSON directamente en el código
+    "resolveJsonModule": true,
+
+    // Genera mapas de código para facilitar el debug (relaciona el JS compilado con el TS original)
+    "sourceMap": true,
+
+    // Modo estricto: obliga a tipar bien el código y evita errores silenciosos
+    "strict": true,
+
+    // Evita problemas de compatibilidad entre módulos de distintos sistemas
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
