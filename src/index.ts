@@ -1,10 +1,9 @@
-import express from 'express';
-import dotenv from 'dotenv';
+import express from "express";
+import dotenv from "dotenv";
 
 // Cargamos las variables de entorno desde el archivo .env
 // Debe ejecutarse antes de importar cualquier módulo que use variables de entorno
 dotenv.config();
-
 
 // Creamos la instancia principal de la aplicación Express
 const app = express();
@@ -16,8 +15,8 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 // Ruta de prueba para verificar que el servidor está funcionando
-app.get('/', (req, res) => {
-  res.json({ message: 'ConCompas API funcionando' });
+app.get("/", (req, res) => {
+  res.json({ message: "ConCompas API funcionando" });
 });
 
 // Arrancamos el servidor
