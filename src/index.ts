@@ -1,9 +1,10 @@
-import express from "express";
 import dotenv from "dotenv";
-
-// Cargamos las variables de entorno desde el archivo .env
-// Debe ejecutarse antes de importar cualquier módulo que use variables de entorno
+// Cargamos las variables de entorno antes de importar cualquier otro módulo.
+// Si dotenv.config() se llamara después, supabase.ts leería process.env vacío y lanzaría error.
 dotenv.config();
+
+import express from "express";
+import authRoutes from "./auth/auth.routes";
 
 // Creamos la instancia principal de la aplicación Express
 const app = express();
@@ -18,6 +19,10 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => {
   res.json({ message: "ConCompas API funcionando" });
 });
+
+// Registramos las rutas de autenticación bajo el prefijo /auth.
+// Todos los endpoints quedan disponibles en /auth/registro, /auth/login, etc.
+app.use("/auth", authRoutes);
 
 // Arrancamos el servidor
 app.listen(PORT, () => {
