@@ -88,11 +88,13 @@ export class AuthController {
 
   // POST /auth/logout — ruta protegida
   // El middleware ya ha verificado el token y ha adjuntado req.usuario antes de llegar aquí.
+  // Extraemos el token de la cabecera para pasárselo al servicio, que lo usa para
+  // invalidarlo en Supabase. El ! es seguro porque el middleware ya garantiza que existe.
   async logout(req: Request, res: Response): Promise<void> {
-    const reqAuth = req as RequestAutenticada;
+    const token = req.headers.authorization!.split(" ")[1];
 
     try {
-      await authService.logout(reqAuth.usuario.id);
+      await authService.logout(token);
       res.status(200).json({ mensaje: "Sesión cerrada correctamente" });
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : "Error al cerrar sesión";
