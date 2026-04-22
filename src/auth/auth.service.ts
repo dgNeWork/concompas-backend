@@ -127,11 +127,12 @@ export class AuthService {
     };
   }
 
-  // Cierra la sesión del usuario invalidando todos sus tokens activos en Supabase.
-  // Al usar signOut con el cliente admin, la sesión queda invalidada en el servidor
-  // aunque el cliente móvil aún tenga el token guardado localmente.
-  async logout(userId: string): Promise<void> {
-    const { error } = await supabaseAdmin.auth.admin.signOut(userId);
+  // Cierra la sesión del usuario invalidando el token en Supabase.
+  // supabaseAdmin.auth.admin.signOut espera el JWT del usuario, no su UUID.
+  // Al invalidarlo en el servidor, el token queda inutilizable aunque el cliente
+  // móvil aún lo tenga guardado localmente.
+  async logout(token: string): Promise<void> {
+    const { error } = await supabaseAdmin.auth.admin.signOut(token);
     if (error) {
       throw new Error(`Error al cerrar la sesión: ${error.message}`);
     }

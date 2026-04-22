@@ -31,7 +31,6 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE OR REPLACE FUNCTION actualizar_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Asignamos la hora actual en UTC con zona horaria al campo updated_at
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
@@ -49,26 +48,6 @@ CREATE TYPE rol_usuario AS ENUM (
   'taxista',   -- Conductor que presta el servicio
   'admin'      -- Operador interno de la plataforma ConCompas
 );
-
-
--- -----------------------------------------------------------------------------
--- FUNCIÓN: obtener_rol_actual()
--- Devuelve el rol del usuario autenticado en este momento.
---
--- Se declara con SECURITY DEFINER para que se ejecute con los permisos del
--- propietario de la función (saltándose el RLS de 'profiles'). Esto evita
--- la recursión infinita que ocurriría si una política de RLS de 'profiles'
--- intentara leer 'profiles' para comprobar el rol.
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION obtener_rol_actual()
-RETURNS rol_usuario
-LANGUAGE sql
-SECURITY DEFINER  -- Ejecuta con permisos del owner, no del usuario llamante
-STABLE            -- No modifica la base de datos y devuelve el mismo resultado
-                  -- para el mismo input dentro de una transacción
-AS $$
-  SELECT rol FROM profiles WHERE id = auth.uid();
-$$;
 
 
 -- -----------------------------------------------------------------------------
@@ -96,9 +75,7 @@ CREATE TABLE profiles (
   apellidos   TEXT          NOT NULL,
 
   -- DNI o documento de identidad equivalente (NIE, pasaporte).
-  -- Obligatorio para todos los usuarios por trazabilidad legal:
-  -- en caso de incidencia o acción legal, la plataforma necesita identificar
-  -- inequívocamente a cualquier parte implicada.
+  -- Obligatorio para todos los usuarios por trazabilidad legal.
   -- NOTA DE SEGURIDAD: este campo contiene PII (Personally Identifiable
   -- Information). En producción se debería cifrar a nivel de aplicación
   -- antes de almacenarlo aquí.
@@ -122,6 +99,32 @@ CREATE TABLE profiles (
 CREATE TRIGGER trg_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION actualizar_updated_at();
+
+
+-- -----------------------------------------------------------------------------
+-- FUNCIÓN: obtener_rol_actual()
+-- Devuelve el rol del usuario autenticado en este momento.
+--
+-- IMPORTANTE: esta función se declara DESPUÉS de CREATE TABLE profiles porque
+-- PostgreSQL valida el cuerpo de las funciones SQL en el momento de crearlas.
+-- Si se declarara antes de que exista la tabla, la creación fallaría con
+-- "relation profiles does not exist".
+--
+-- Se declara con SECURITY DEFINER para que se ejecute con los permisos del
+-- propietario de la función (saltándose el RLS de 'profiles'). Esto evita
+-- la recursión infinita que ocurriría si una política de RLS de 'profiles'
+-- intentara leer 'profiles' para comprobar el rol.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION obtener_rol_actual()
+RETURNS rol_usuario
+LANGUAGE sql
+SECURITY DEFINER  -- Ejecuta con permisos del owner, no del usuario llamante
+STABLE            -- No modifica la base de datos y devuelve el mismo resultado
+                  -- para el mismo input dentro de una transacción
+AS $$
+  SELECT rol FROM profiles WHERE id = auth.uid();
+$$;
+
 
 -- -----------------------------------------------------------------------------
 -- SEGURIDAD: Row Level Security (RLS) en profiles
