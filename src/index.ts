@@ -8,6 +8,7 @@ import helmet from "helmet";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import authRoutes from "./auth/auth.routes";
+import mapsRoutes from "./maps/maps.routes";
 import { authRateLimit } from "./middleware/rate-limit.middleware";
 import logger from "./config/logger";
 
@@ -46,6 +47,9 @@ app.get("/", (req, res) => {
 // Rate limiting solo en autenticación + rutas de autenticación
 app.use("/auth", authRateLimit);
 app.use("/auth", authRoutes);
+
+// Rutas de cálculo de trayectos con Google Maps
+app.use("/maps", mapsRoutes);
 
 // Arrancamos el servidor
 app.listen(PORT, () => {

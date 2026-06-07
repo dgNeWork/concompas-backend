@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/dgNeWork/concompas-backend#readme",
   "dependencies": {
+    "@googlemaps/google-maps-services-js": "^3.4.2",
     "@supabase/supabase-js": "^2.99.2",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
