@@ -17,6 +17,7 @@
 
 import { supabaseAdmin } from "../config/supabase";
 import { mapsService } from "../maps/maps.service";
+import { stripeService } from "../stripe/stripe.service";
 import {
   CrearTrayectoDto,
   AceptarTrayectoDto,
@@ -312,6 +313,22 @@ export class TrayectosService {
 
     if (errUpdate || !actualizado) {
       throw new Error("Error al cambiar el estado del trayecto");
+    }
+
+    // Cuando el trayecto se completa, capturamos el pago y transferimos al taxista.
+    // Lo hacemos después de actualizar la BD para que el trayecto ya esté en 'completado'
+    // antes de llamar a Stripe. Si Stripe falla, el trayecto queda completado igualmente
+    // y el admin puede procesar el pago manualmente desde el panel.
+    if (datos.estado === "completado" && actualizado.stripe_payment_intent_id) {
+      try {
+        await stripeService.capturarPagoYTransferir(trayectoId);
+      } catch (error) {
+        // No revertimos el estado del trayecto por un fallo de Stripe.
+        // El servicio se prestó correctamente; el pago se recupera manualmente.
+        // TODO Ticket 5.2: notificar al admin cuando la captura falla
+        const mensaje = error instanceof Error ? error.message : "Error desconocido";
+        console.error(`Error al capturar el pago del trayecto ${trayectoId}: ${mensaje}`);
+      }
     }
 
     return this.mapearTrayecto(actualizado);
