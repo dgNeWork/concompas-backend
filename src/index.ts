@@ -9,6 +9,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import authRoutes from "./auth/auth.routes";
 import mapsRoutes from "./maps/maps.routes";
+import trayectosRoutes from "./trayectos/trayectos.routes";
 import { authRateLimit } from "./middleware/rate-limit.middleware";
 import logger from "./config/logger";
 
@@ -50,6 +51,9 @@ app.use("/auth", authRoutes);
 
 // Rutas de cálculo de trayectos con Google Maps
 app.use("/maps", mapsRoutes);
+
+// Rutas del módulo de trayectos concertados (CRUD + matching de taxistas)
+app.use("/trayectos", trayectosRoutes);
 
 // Arrancamos el servidor
 app.listen(PORT, () => {
