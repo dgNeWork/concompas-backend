@@ -10,6 +10,8 @@ import pinoHttp from "pino-http";
 import authRoutes from "./auth/auth.routes";
 import mapsRoutes from "./maps/maps.routes";
 import trayectosRoutes from "./trayectos/trayectos.routes";
+import stripeRoutes from "./stripe/stripe.routes";
+import { stripeWebhookHandler } from "./stripe/stripe.webhook";
 import { authRateLimit } from "./middleware/rate-limit.middleware";
 import logger from "./config/logger";
 
@@ -34,6 +36,11 @@ app.use(
   })
 );
 
+// Webhook de Stripe — DEBE registrarse antes de express.json().
+// Stripe verifica la autenticidad del evento usando una firma sobre el body raw.
+// Si express.json() lo procesa primero, el body se convierte en objeto y la firma falla.
+app.post("/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
+
 // Permitimos que el servidor entienda JSON en el cuerpo de las peticiones
 app.use(express.json());
 
@@ -54,6 +61,9 @@ app.use("/maps", mapsRoutes);
 
 // Rutas del módulo de trayectos concertados (CRUD + matching de taxistas)
 app.use("/trayectos", trayectosRoutes);
+
+// Rutas de Stripe (onboarding, pagos, incentivos). El webhook ya está registrado arriba.
+app.use("/stripe", stripeRoutes);
 
 // Arrancamos el servidor
 app.listen(PORT, () => {
