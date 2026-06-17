@@ -18,6 +18,7 @@
 import { supabaseAdmin } from "../config/supabase";
 import { mapsService } from "../maps/maps.service";
 import { stripeService } from "../stripe/stripe.service";
+import { cancelacionesService } from "../cancelaciones/cancelaciones.service";
 import {
   CrearTrayectoDto,
   AceptarTrayectoDto,
@@ -185,6 +186,10 @@ export class TrayectosService {
     if (errTrayecto || !trayecto) throw new Error("Trayecto no encontrado");
     if (errPerfil || !perfilTaxista) throw new Error("Perfil de taxista no encontrado");
 
+    // Un taxista con penalizaciones pendientes desde hace demasiado tiempo no
+    // puede aceptar nuevas reservas hasta regularizar su situación (Ticket 5.2).
+    await cancelacionesService.verificarSuspension(taxistaId);
+
     // Solo se pueden aceptar trayectos en estado pendiente o asignado (para el suplente)
     if (trayecto.estado !== "pendiente" && trayecto.estado !== "asignado") {
       throw new Error("Este trayecto ya no admite más taxistas");
@@ -285,8 +290,16 @@ export class TrayectosService {
       throw new Error("El motivo de cancelación es obligatorio");
     }
 
-    // Si el taxista titular cancela, el suplente pasa a ser el nuevo titular.
-    // La penalización se gestionará en el Ticket 5.2.
+    // Cancelación del cliente: aplica la tabla de tramos por antelación
+    // (cobro al cliente vía Stripe + compensación a titular/suplente).
+    // Si cancela el admin, no se cobra ni se penaliza a nadie (es la vía de
+    // "regularizar a mano" casos de fuerza mayor).
+    if (datos.estado === "cancelado" && rol === "cliente") {
+      await cancelacionesService.procesarCancelacionCliente(trayecto);
+    }
+
+    // Si el taxista titular cancela, el suplente pasa a ser el nuevo titular y
+    // se genera la penalización correspondiente al taxista que cancela.
     let camposExtra: Record<string, unknown> = {};
     if (datos.estado === "cancelado" && trayecto.taxista_titular_id === usuarioId) {
       camposExtra = {
@@ -295,7 +308,7 @@ export class TrayectosService {
         // Si no había suplente, el trayecto vuelve a pendiente para buscar taxi
         estado: trayecto.taxista_reserva_id ? "asignado" : "pendiente",
       };
-      // TODO Ticket 5.2: generar penalización al taxista titular que cancela
+      await cancelacionesService.procesarCancelacionTaxista(trayecto, usuarioId);
       // TODO Ticket notificaciones: avisar para buscar nuevo suplente
     }
 
