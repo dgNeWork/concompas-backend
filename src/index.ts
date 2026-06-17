@@ -11,6 +11,7 @@ import authRoutes from "./auth/auth.routes";
 import mapsRoutes from "./maps/maps.routes";
 import trayectosRoutes from "./trayectos/trayectos.routes";
 import stripeRoutes from "./stripe/stripe.routes";
+import cancelacionesRoutes from "./cancelaciones/cancelaciones.routes";
 import { stripeWebhookHandler } from "./stripe/stripe.webhook";
 import { authRateLimit } from "./middleware/rate-limit.middleware";
 import logger from "./config/logger";
@@ -64,6 +65,9 @@ app.use("/trayectos", trayectosRoutes);
 
 // Rutas de Stripe (onboarding, pagos, incentivos). El webhook ya está registrado arriba.
 app.use("/stripe", stripeRoutes);
+
+// Rutas de cancelaciones y penalizaciones (justificar / resolver penalizaciones)
+app.use("/cancelaciones", cancelacionesRoutes);
 
 // Arrancamos el servidor
 app.listen(PORT, () => {

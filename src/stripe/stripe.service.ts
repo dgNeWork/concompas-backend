@@ -334,6 +334,65 @@ export class StripeService {
 
 
   // ---------------------------------------------------------------------------
+  // CAPTURAR PARCIALMENTE O CANCELAR (cancelaciones de cliente, Ticket 5.2)
+  // Cuando el cliente cancela con derecho a retención parcial, capturamos solo
+  // el porcentaje correspondiente del PaymentIntent. Stripe libera automáticamente
+  // el resto de la autorización sin necesidad de ninguna operación adicional.
+  //
+  // porcentaje <= 0 → cancelamos el PaymentIntent (gratis, libera la retención completa)
+  // porcentaje > 0  → capturamos amount_to_capture = importe_total * porcentaje/100
+  //
+  // Si el trayecto no tiene pago asociado (canceló antes de pagar, o un trayecto
+  // "Para Ya!" sin checkout iniciado), no hacemos nada: no hay nada que capturar.
+  // ---------------------------------------------------------------------------
+  async capturarParcialOCancelar(trayectoId: string, porcentaje: number): Promise<void> {
+
+    const { data: pago } = await supabaseAdmin
+      .from("pagos")
+      .select("id, stripe_payment_intent_id, estado, importe_total")
+      .eq("trayecto_id", trayectoId)
+      .single();
+
+    if (!pago) return; // No hay pago asociado: nada que cobrar ni que liberar
+
+    if (pago.estado !== "pendiente") {
+      throw new Error(`No se puede capturar/cancelar un pago en estado '${pago.estado}'`);
+    }
+
+    if (porcentaje <= 0) {
+      await stripe.paymentIntents.cancel(pago.stripe_payment_intent_id);
+
+      await supabaseAdmin
+        .from("pagos")
+        .update({
+          estado: "reembolsado",
+          reembolsado_at: new Date().toISOString(),
+        })
+        .eq("id", pago.id);
+      return;
+    }
+
+    // El importe realmente capturado se guarda en importe_capturado_real, NUNCA en
+    // importe_total: esa columna conserva siempre el precio original pactado con el
+    // cliente, dato necesario para resolver cualquier disputa o reclamación.
+    const importeCapturado = Math.round(pago.importe_total * (porcentaje / 100) * 100) / 100;
+
+    await stripe.paymentIntents.capture(pago.stripe_payment_intent_id, {
+      amount_to_capture: Math.round(importeCapturado * 100),
+    });
+
+    await supabaseAdmin
+      .from("pagos")
+      .update({
+        estado: "capturado",
+        importe_capturado_real: importeCapturado,
+        capturado_at: new Date().toISOString(),
+      })
+      .eq("id", pago.id);
+  }
+
+
+  // ---------------------------------------------------------------------------
   // RETIRAR INCENTIVOS
   // El taxista solicita retirar su saldo acumulado de incentivos.
   // Creamos un Transfer desde el balance de la plataforma a la cuenta Connect
