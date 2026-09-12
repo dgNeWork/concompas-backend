@@ -504,8 +504,3 @@ export class StripeService {
       .eq("stripe_account_id", stripeAccountId);
   }
 }
-
-// NOTA (Ticket 15): instancia usada todavía por stripe.webhook.ts (handler de
-// Express sin migrar, necesita body raw) y por cancelaciones.service.ts, que
-// tampoco se ha migrado a Nest. Se elimina cuando ambos pasen a Nest.
-export const stripeService = new StripeService(new SupabaseService());

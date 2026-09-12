@@ -17,12 +17,9 @@
 
 import { Injectable } from "@nestjs/common";
 import { SupabaseService } from "../config/supabase.service";
-import { mapsService } from "../maps/maps.service";
-// NOTA (Ticket 15): stripe y cancelaciones aún no se han migrado a Nest, así
-// que se siguen usando sus instancias singleton. Cuando se migren, este
-// servicio pasará a recibirlos por inyección de dependencias igual que SupabaseService.
-import { stripeService } from "../stripe/stripe.service";
-import { cancelacionesService } from "../cancelaciones/cancelaciones.service";
+import { MapsService } from "../maps/maps.service";
+import { StripeService } from "../stripe/stripe.service";
+import { CancelacionesService } from "../cancelaciones/cancelaciones.service";
 import {
   CrearTrayectoInput,
   AceptarTrayectoInput,
@@ -33,7 +30,12 @@ import { RolUsuario } from "../auth/auth.types";
 
 @Injectable()
 export class TrayectosService {
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly mapsService: MapsService,
+    private readonly stripeService: StripeService,
+    private readonly cancelacionesService: CancelacionesService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // CREAR TRAYECTO
@@ -52,7 +54,7 @@ export class TrayectosService {
     // El frontend mostrará el aviso de "tiempo estimado no disponible".
     let duracionMin: number | null = null;
     try {
-      const resultado = await mapsService.calcularTrayecto(
+      const resultado = await this.mapsService.calcularTrayecto(
         { lat: datos.origen_lat, lng: datos.origen_lng },
         { lat: datos.destino_lat, lng: datos.destino_lng }
       );
@@ -192,7 +194,7 @@ export class TrayectosService {
 
     // Un taxista con penalizaciones pendientes desde hace demasiado tiempo no
     // puede aceptar nuevas reservas hasta regularizar su situación (Ticket 5.2).
-    await cancelacionesService.verificarSuspension(taxistaId);
+    await this.cancelacionesService.verificarSuspension(taxistaId);
 
     // Solo se pueden aceptar trayectos en estado pendiente o asignado (para el suplente)
     if (trayecto.estado !== "pendiente" && trayecto.estado !== "asignado") {
@@ -220,7 +222,7 @@ export class TrayectosService {
     let horaSalidaTaxista: string | null = trayecto.hora_salida_estimada_taxista ?? null;
     if (esTitular && perfilTaxista.municipio_licencia) {
       try {
-        const horaSalida = await mapsService.calcularHoraSalida(
+        const horaSalida = await this.mapsService.calcularHoraSalida(
           `${perfilTaxista.municipio_licencia}, Cádiz, España`,
           { lat: trayecto.origen_lat ?? 0, lng: trayecto.origen_lng ?? 0 },
           new Date(trayecto.fecha_hora_recogida)
@@ -299,7 +301,7 @@ export class TrayectosService {
     // Si cancela el admin, no se cobra ni se penaliza a nadie (es la vía de
     // "regularizar a mano" casos de fuerza mayor).
     if (datos.estado === "cancelado" && rol === "cliente") {
-      await cancelacionesService.procesarCancelacionCliente(trayecto);
+      await this.cancelacionesService.procesarCancelacionCliente(trayecto);
     }
 
     // Si el taxista titular cancela, el suplente pasa a ser el nuevo titular y
@@ -312,7 +314,7 @@ export class TrayectosService {
         // Si no había suplente, el trayecto vuelve a pendiente para buscar taxi
         estado: trayecto.taxista_reserva_id ? "asignado" : "pendiente",
       };
-      await cancelacionesService.procesarCancelacionTaxista(trayecto, usuarioId);
+      await this.cancelacionesService.procesarCancelacionTaxista(trayecto, usuarioId);
       // TODO Ticket notificaciones: avisar para buscar nuevo suplente
     }
 
@@ -338,7 +340,7 @@ export class TrayectosService {
     // y el admin puede procesar el pago manualmente desde el panel.
     if (datos.estado === "completado" && actualizado.stripe_payment_intent_id) {
       try {
-        await stripeService.capturarPagoYTransferir(trayectoId);
+        await this.stripeService.capturarPagoYTransferir(trayectoId);
       } catch (error) {
         // No revertimos el estado del trayecto por un fallo de Stripe.
         // El servicio se prestó correctamente; el pago se recupera manualmente.

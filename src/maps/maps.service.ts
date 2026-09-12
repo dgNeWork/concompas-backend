@@ -92,8 +92,3 @@ export class MapsService {
     return new Date(horaLlegada.getTime() - duracionSegundos * 1000);
   }
 }
-
-// NOTA (Ticket 15): instancia usada todavía por trayectos.service.ts, que no se
-// ha migrado a Nest. Se elimina cuando ese módulo pase a Nest y pueda inyectar
-// MapsService normalmente.
-export const mapsService = new MapsService();

@@ -7,5 +7,7 @@ import { AuthModule } from "../auth/auth.module";
   imports: [AuthModule], // AuthModule exporta AuthGuard, usado para proteger estas rutas
   controllers: [MapsController],
   providers: [MapsService],
+  // Se exporta para que trayectos lo inyecte al calcular duraciones y horas estimadas.
+  exports: [MapsService],
 })
 export class MapsModule {}

@@ -175,10 +175,3 @@ export class AuthService {
     };
   }
 }
-
-// NOTA (Ticket 15): instancia usada todavía por el middleware autenticar() y por
-// los módulos de Express sin migrar (maps, trayectos, stripe, cancelaciones).
-// AuthService no tiene estado propio (solo delega en SupabaseService, que tampoco
-// lo tiene), así que compartir esta instancia con el contenedor de Nest es seguro.
-// Se elimina cuando el último módulo pase a Nest y pueda inyectar AuthService normalmente.
-export const authService = new AuthService(new SupabaseService());

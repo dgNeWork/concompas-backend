@@ -50,17 +50,8 @@ export interface ResultadoCancelacionTaxista {
 }
 
 
-// DTO para que el taxista añada una justificación a su propia penalización.
-export interface JustificarPenalizacionDto {
-  justificacion: string;
-}
-
-
-// DTO para que el admin resuelva una penalización pendiente.
-export interface ResolverPenalizacionDto {
-  estado: "descontada" | "cancelada_con_justificacion";
-}
-
+// Los DTOs de entrada (justificar/resolver) viven junto a sus schemas de Zod
+// en ./dto/cancelaciones.dto.ts (JustificarInput, ResolverInput).
 
 // Forma de la penalización tal como la devuelve la API.
 export interface PenalizacionRespuesta {
