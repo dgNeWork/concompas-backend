@@ -14,7 +14,6 @@ import logger from "./config/logger";
 // Módulos que todavía no se han migrado a NestJS (Ticket 15, en curso).
 // Se montan como routers de Express clásicos mientras se completa la migración
 // módulo a módulo; se irán retirando de aquí según cada uno pase a Nest.
-import mapsRoutes from "./maps/maps.routes";
 import trayectosRoutes from "./trayectos/trayectos.routes";
 import stripeRoutes from "./stripe/stripe.routes";
 import cancelacionesRoutes from "./cancelaciones/cancelaciones.routes";
@@ -49,7 +48,6 @@ async function bootstrap() {
 
   // TODO(Ticket 15): retirar cada línea de aquí abajo según se migre su módulo a Nest.
   app.use("/stripe/webhook", stripeWebhookHandler);
-  app.use("/maps", mapsRoutes);
   app.use("/trayectos", trayectosRoutes);
   app.use("/stripe", stripeRoutes);
   app.use("/cancelaciones", cancelacionesRoutes);

@@ -1,9 +1,11 @@
+import { Injectable } from "@nestjs/common";
 import { Client } from "@googlemaps/google-maps-services-js";
 import { CoordsDto, ResultadoTrayecto } from "./maps.types";
 
 // MapsService encapsula todas las llamadas a la API de Google Maps Directions.
 // El resto del sistema (trayectos, cancelaciones) usa este servicio sin conocer
 // los detalles de la API externa. Principio SRP + DIP.
+@Injectable()
 export class MapsService {
   private client: Client;
   private apiKey: string;
@@ -91,4 +93,7 @@ export class MapsService {
   }
 }
 
+// NOTA (Ticket 15): instancia usada todavía por trayectos.service.ts, que no se
+// ha migrado a Nest. Se elimina cuando ese módulo pase a Nest y pueda inyectar
+// MapsService normalmente.
 export const mapsService = new MapsService();
