@@ -15,20 +15,24 @@
 //   5. Comprobar si un taxista está suspendido por impago prolongado
 // =============================================================================
 
-import { supabaseAdmin } from "../config/supabase";
-import { stripeService } from "../stripe/stripe.service";
+import { Injectable } from "@nestjs/common";
+import { SupabaseService } from "../config/supabase.service";
+import { StripeService } from "../stripe/stripe.service";
+import { JustificarInput, ResolverInput } from "./dto/cancelaciones.dto";
 import {
   TramoPenalizacionCancelacion,
   ResultadoCancelacionCliente,
   ResultadoCancelacionTaxista,
-  JustificarPenalizacionDto,
-  ResolverPenalizacionDto,
   PenalizacionRespuesta,
   EstadoPenalizacion,
 } from "./cancelaciones.types";
 
-
+@Injectable()
 export class CancelacionesService {
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly stripeService: StripeService,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // PROCESAR CANCELACIÓN DEL CLIENTE
@@ -71,7 +75,7 @@ export class CancelacionesService {
     // Si no hay taxista titular asignado, nadie se vio perjudicado: cobro 0 al
     // cliente y nada que compensar, sea cual sea el tramo encontrado.
     if (!taxistaTitularId) {
-      await stripeService.capturarParcialOCancelar(trayectoId, 0);
+      await this.stripeService.capturarParcialOCancelar(trayectoId, 0);
       return {
         horasAntesServicio,
         esFueraCiudad,
@@ -82,7 +86,7 @@ export class CancelacionesService {
       };
     }
 
-    await stripeService.capturarParcialOCancelar(trayectoId, porcentajeCobroCliente);
+    await this.stripeService.capturarParcialOCancelar(trayectoId, porcentajeCobroCliente);
 
     const importeTaxista = trayecto.importe_taxista as number;
 
@@ -131,7 +135,7 @@ export class CancelacionesService {
     const importePenalizacion = this.calcularImporte(importeTaxista, porcentajePenalizacion);
 
     if (importePenalizacion > 0) {
-      const { error } = await supabaseAdmin.from("penalizaciones_taxista").insert({
+      const { error } = await this.supabaseService.admin.from("penalizaciones_taxista").insert({
         taxista_id: taxistaQueCancelaId,
         trayecto_id: trayecto.id as string,
         importe: importePenalizacion,
@@ -156,10 +160,11 @@ export class CancelacionesService {
   async justificarPenalizacion(
     penalizacionId: string,
     taxistaId: string,
-    datos: JustificarPenalizacionDto
+    datos: JustificarInput
   ): Promise<PenalizacionRespuesta> {
+    const admin = this.supabaseService.admin;
 
-    const { data: penalizacion, error } = await supabaseAdmin
+    const { data: penalizacion, error } = await admin
       .from("penalizaciones_taxista")
       .select("*")
       .eq("id", penalizacionId)
@@ -173,7 +178,7 @@ export class CancelacionesService {
       throw new Error("Solo se puede justificar una penalización en estado pendiente");
     }
 
-    const { data: actualizada, error: errUpdate } = await supabaseAdmin
+    const { data: actualizada, error: errUpdate } = await admin
       .from("penalizaciones_taxista")
       .update({ justificacion: datos.justificacion })
       .eq("id", penalizacionId)
@@ -195,10 +200,11 @@ export class CancelacionesService {
   // ---------------------------------------------------------------------------
   async resolverPenalizacion(
     penalizacionId: string,
-    datos: ResolverPenalizacionDto
+    datos: ResolverInput
   ): Promise<PenalizacionRespuesta> {
+    const admin = this.supabaseService.admin;
 
-    const { data: penalizacion, error } = await supabaseAdmin
+    const { data: penalizacion, error } = await admin
       .from("penalizaciones_taxista")
       .select("*")
       .eq("id", penalizacionId)
@@ -209,7 +215,7 @@ export class CancelacionesService {
       throw new Error("Esta penalización ya fue resuelta");
     }
 
-    const { data: actualizada, error: errUpdate } = await supabaseAdmin
+    const { data: actualizada, error: errUpdate } = await admin
       .from("penalizaciones_taxista")
       .update({ estado: datos.estado })
       .eq("id", penalizacionId)
@@ -232,7 +238,7 @@ export class CancelacionesService {
   // antes de justificar — la API no expone Supabase directo al cliente.
   // ---------------------------------------------------------------------------
   async listarPenalizacionesTaxista(taxistaId: string): Promise<PenalizacionRespuesta[]> {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("penalizaciones_taxista")
       .select("*")
       .eq("taxista_id", taxistaId)
@@ -249,7 +255,7 @@ export class CancelacionesService {
   // saldo negativo prolongado. Lanza un error descriptivo si está suspendido.
   // ---------------------------------------------------------------------------
   async verificarSuspension(taxistaId: string): Promise<void> {
-    const { data: perfil, error } = await supabaseAdmin
+    const { data: perfil, error } = await this.supabaseService.admin
       .from("taxistas_perfil")
       .select("penalizacion_pendiente, penalizacion_pendiente_desde")
       .eq("profile_id", taxistaId)
@@ -279,7 +285,7 @@ export class CancelacionesService {
   // horas dadas. Más simple y robusto que expresar "horas_hasta IS NULL OR
   // horas < horas_hasta" en una sola query de supabase-js, y la tabla es pequeña.
   private async obtenerTramoAplicable(horasAntesServicio: number): Promise<TramoPenalizacionCancelacion> {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("configuracion_penalizaciones_cancelacion")
       .select("*")
       .eq("activo", true);
@@ -335,7 +341,7 @@ export class CancelacionesService {
   // una penalización, negativo al anularla) y gestiona penalizacion_pendiente_desde:
   // se rellena cuando el saldo pasa de 0 a positivo, se limpia cuando vuelve a 0.
   private async actualizarPenalizacionPendiente(taxistaId: string, delta: number): Promise<void> {
-    const { data: perfil, error } = await supabaseAdmin
+    const { data: perfil, error } = await this.supabaseService.admin
       .from("taxistas_perfil")
       .select("penalizacion_pendiente")
       .eq("profile_id", taxistaId)
@@ -353,11 +359,11 @@ export class CancelacionesService {
       camposUpdate.penalizacion_pendiente_desde = null;
     }
 
-    await supabaseAdmin.from("taxistas_perfil").update(camposUpdate).eq("profile_id", taxistaId);
+    await this.supabaseService.admin.from("taxistas_perfil").update(camposUpdate).eq("profile_id", taxistaId);
   }
 
   private async incrementarIncentivoAcumulado(taxistaId: string, importe: number): Promise<void> {
-    const { data: perfil, error } = await supabaseAdmin
+    const { data: perfil, error } = await this.supabaseService.admin
       .from("taxistas_perfil")
       .select("incentivo_acumulado")
       .eq("profile_id", taxistaId)
@@ -367,7 +373,7 @@ export class CancelacionesService {
 
     const nuevo = Number(perfil.incentivo_acumulado) + importe;
 
-    await supabaseAdmin
+    await this.supabaseService.admin
       .from("taxistas_perfil")
       .update({ incentivo_acumulado: nuevo })
       .eq("profile_id", taxistaId);
@@ -387,5 +393,3 @@ export class CancelacionesService {
     };
   }
 }
-
-export const cancelacionesService = new CancelacionesService();

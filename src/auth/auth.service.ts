@@ -1,12 +1,16 @@
-import { supabase, supabaseAdmin } from "../config/supabase";
-import { RegistroDto, LoginDto, UsuarioAutenticado } from "./auth.types";
+import { Injectable } from "@nestjs/common";
+import { SupabaseService } from "../config/supabase.service";
+import { RegistroDto } from "./dto/registro.dto";
+import { LoginDto } from "./dto/login.dto";
+import { UsuarioAutenticado } from "./auth.types";
 
 // AuthService encapsula toda la lógica de autenticación.
 // Los controladores no conocen los detalles de Supabase — solo llaman a este servicio.
 // Principio SRP: este servicio tiene una única responsabilidad, gestionar la autenticación.
-// Principio DIP: el controlador depende de esta abstracción, no de Supabase directamente.
-
+// Principio DIP: depende de la abstracción SupabaseService (inyectada), no de Supabase directamente.
+@Injectable()
 export class AuthService {
+  constructor(private readonly supabaseService: SupabaseService) {}
 
   // Registra un nuevo usuario en tres pasos:
   //   1. Crea el usuario en Supabase Auth (auth.users)
@@ -16,9 +20,10 @@ export class AuthService {
   // Usamos supabaseAdmin en los pasos 2 y 3 porque el usuario recién creado aún no
   // tiene sesión activa, y el RLS bloquearía los INSERT si usáramos el cliente estándar.
   async registrar(dto: RegistroDto): Promise<UsuarioAutenticado> {
+    const admin = this.supabaseService.admin;
 
     // Paso 1: crear el usuario en Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email: dto.email,
       password: dto.password,
       // Confirmamos el email automáticamente para no complicar el flujo del MVP.
@@ -33,7 +38,7 @@ export class AuthService {
     const userId = authData.user.id;
 
     // Paso 2: crear el perfil base en nuestra tabla profiles
-    const { error: profileError } = await supabaseAdmin
+    const { error: profileError } = await admin
       .from("profiles")
       .insert({
         id: userId,
@@ -47,13 +52,13 @@ export class AuthService {
     if (profileError) {
       // Si falla la inserción del perfil, eliminamos el usuario de auth para no
       // dejar datos huérfanos (usuario en auth.users sin perfil en profiles).
-      await supabaseAdmin.auth.admin.deleteUser(userId);
+      await admin.auth.admin.deleteUser(userId);
       throw new Error(`Error al crear el perfil: ${profileError.message}`);
     }
 
     // Paso 3: crear el perfil específico del rol
     if (dto.rol === "cliente") {
-      const { error: clienteError } = await supabaseAdmin
+      const { error: clienteError } = await admin
         .from("clientes_perfil")
         .insert({
           profile_id: userId,
@@ -61,13 +66,13 @@ export class AuthService {
         });
 
       if (clienteError) {
-        await supabaseAdmin.auth.admin.deleteUser(userId);
+        await admin.auth.admin.deleteUser(userId);
         throw new Error(`Error al crear el perfil de cliente: ${clienteError.message}`);
       }
     }
 
     if (dto.rol === "taxista") {
-      const { error: taxistaError } = await supabaseAdmin
+      const { error: taxistaError } = await admin
         .from("taxistas_perfil")
         .insert({
           profile_id: userId,
@@ -75,7 +80,7 @@ export class AuthService {
         });
 
       if (taxistaError) {
-        await supabaseAdmin.auth.admin.deleteUser(userId);
+        await admin.auth.admin.deleteUser(userId);
         throw new Error(`Error al crear el perfil de taxista: ${taxistaError.message}`);
       }
     }
@@ -90,9 +95,11 @@ export class AuthService {
   }
 
   // Inicia sesión con email y contraseña.
-  // Devuelve los tokens JWT que el cliente móvil guardará y usará en futuras peticiones.
+  // Devuelve los tokens JWT que el cliente guardará y usará en futuras peticiones.
   async login(dto: LoginDto) {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { client, admin } = this.supabaseService;
+
+    const { data, error } = await client.auth.signInWithPassword({
       email: dto.email,
       password: dto.password,
     });
@@ -103,7 +110,7 @@ export class AuthService {
 
     // Leemos el perfil para incluir el rol y nombre en la respuesta,
     // de forma que la app no tenga que hacer una segunda petición para obtenerlos.
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("rol, nombre, apellidos")
       .eq("id", data.user.id)
@@ -130,25 +137,26 @@ export class AuthService {
   // Cierra la sesión del usuario invalidando el token en Supabase.
   // supabaseAdmin.auth.admin.signOut espera el JWT del usuario, no su UUID.
   // Al invalidarlo en el servidor, el token queda inutilizable aunque el cliente
-  // móvil aún lo tenga guardado localmente.
+  // aún lo tenga guardado localmente.
   async logout(token: string): Promise<void> {
-    const { error } = await supabaseAdmin.auth.admin.signOut(token);
+    const { error } = await this.supabaseService.admin.auth.admin.signOut(token);
     if (error) {
       throw new Error(`Error al cerrar la sesión: ${error.message}`);
     }
   }
 
   // Verifica un token JWT y devuelve los datos del usuario autenticado.
-  // Es el método que usa el middleware para proteger rutas: si el token no es válido,
-  // lanza un error y el middleware responde con 401 antes de llegar al controlador.
+  // La usa AuthGuard para proteger rutas: si el token no es válido, lanza un
+  // error y el guard responde con 401 antes de llegar al controlador.
   async verificarToken(token: string): Promise<UsuarioAutenticado> {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    const admin = this.supabaseService.admin;
+    const { data, error } = await admin.auth.getUser(token);
 
     if (error || !data.user) {
       throw new Error("Token inválido o expirado");
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
+    const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("rol, nombre, apellidos")
       .eq("id", data.user.id)
@@ -167,8 +175,3 @@ export class AuthService {
     };
   }
 }
-
-// Exportamos una única instancia del servicio (patrón Singleton).
-// El servicio no tiene estado mutable, así que reutilizar la misma instancia
-// en toda la aplicación es seguro y eficiente.
-export const authService = new AuthService();

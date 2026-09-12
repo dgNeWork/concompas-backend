@@ -1,132 +1,105 @@
 // =============================================================================
 // CANCELACIONES CONTROLLER
 // =============================================================================
-// Responsabilidad única: recibir la request HTTP, validar los datos con Zod y
-// delegar en CancelacionesService. No contiene lógica de negocio.
+// Responsabilidad única: recibir la request HTTP, validar los datos (delegado
+// al pipe) y llamar a CancelacionesService. No contiene lógica de negocio.
 //
 // La cancelación de un trayecto en sí (PATCH /trayectos/:id/estado) sigue
 // viviendo en trayectos.controller.ts — este módulo solo gestiona lo que pasa
 // DESPUÉS de generarse una penalización: justificarla y resolverla.
 // =============================================================================
 
-import { Response } from "express";
-import { z } from "zod";
-import { cancelacionesService } from "./cancelaciones.service";
-import { RequestAutenticada } from "../auth/auth.types";
+import {
+  ForbiddenException,
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  HttpStatus,
+  InternalServerErrorException,
+  Param,
+  Patch,
+  UseGuards,
+} from "@nestjs/common";
+import { CancelacionesService } from "./cancelaciones.service";
+import { AuthGuard } from "../auth/auth.guard";
+import { Usuario } from "../auth/decorators/usuario.decorator";
+import { UsuarioAutenticado } from "../auth/auth.types";
+import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
+import { justificarSchema, JustificarInput, resolverSchema, ResolverInput } from "./dto/cancelaciones.dto";
 
-
-// ----------------------------------------------------------------------------
-// SCHEMAS DE VALIDACIÓN (Zod)
-// ----------------------------------------------------------------------------
-
-const justificarSchema = z.object({
-  justificacion: z.string().min(10, "La justificación debe tener al menos 10 caracteres").max(1000),
-});
-
-const resolverSchema = z.object({
-  estado: z.enum(["descontada", "cancelada_con_justificacion"]),
-});
-
-
-// ----------------------------------------------------------------------------
-// CONTROLLER
-// ----------------------------------------------------------------------------
-
+@Controller("cancelaciones")
+@UseGuards(AuthGuard)
 export class CancelacionesController {
+  constructor(private readonly cancelacionesService: CancelacionesService) {}
 
   // GET /cancelaciones/mis-penalizaciones
   // El taxista ve sus propias penalizaciones (para encontrar el ID que necesita
   // al justificar, y para conocer su situación económica).
-  async listarPropias(req: RequestAutenticada, res: Response): Promise<void> {
-    if (req.usuario.rol !== "taxista") {
-      res.status(403).json({ error: "Solo los taxistas tienen penalizaciones" });
-      return;
+  @Get("mis-penalizaciones")
+  async listarPropias(@Usuario() usuario: UsuarioAutenticado) {
+    if (usuario.rol !== "taxista") {
+      throw new ForbiddenException("Solo los taxistas tienen penalizaciones");
     }
 
     try {
-      const penalizaciones = await cancelacionesService.listarPenalizacionesTaxista(req.usuario.id);
-      res.status(200).json(penalizaciones);
+      return await this.cancelacionesService.listarPenalizacionesTaxista(usuario.id);
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : "Error al listar penalizaciones";
-      res.status(500).json({ error: mensaje });
+      throw new InternalServerErrorException(mensaje);
     }
   }
 
   // PATCH /cancelaciones/:id/justificar
   // El taxista penalizado añade un texto explicativo para que el admin lo revise.
-  async justificar(req: RequestAutenticada, res: Response): Promise<void> {
-    const id = req.params["id"];
-
-    if (!id) {
-      res.status(400).json({ error: "ID de penalización requerido" });
-      return;
-    }
-
-    const resultado = justificarSchema.safeParse(req.body);
-
-    if (!resultado.success) {
-      res.status(400).json({ error: "Datos inválidos", detalles: resultado.error.issues });
-      return;
-    }
-
-    if (req.usuario.rol !== "taxista") {
-      res.status(403).json({ error: "Solo los taxistas pueden justificar penalizaciones" });
-      return;
+  @Patch(":id/justificar")
+  async justificar(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(justificarSchema)) dto: JustificarInput,
+    @Usuario() usuario: UsuarioAutenticado,
+  ) {
+    if (usuario.rol !== "taxista") {
+      throw new ForbiddenException("Solo los taxistas pueden justificar penalizaciones");
     }
 
     try {
-      const penalizacion = await cancelacionesService.justificarPenalizacion(
-        id as string,
-        req.usuario.id,
-        resultado.data
-      );
-      res.status(200).json(penalizacion);
+      return await this.cancelacionesService.justificarPenalizacion(id, usuario.id, dto);
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : "Error al justificar la penalización";
-      const status =
-        mensaje.includes("permiso")
-          ? 403
-          : mensaje.includes("encontrada")
-          ? 404
-          : mensaje.includes("pendiente")
-          ? 400
-          : 500;
-      res.status(status).json({ error: mensaje });
+      const status = mensaje.includes("permiso")
+        ? HttpStatus.FORBIDDEN
+        : mensaje.includes("encontrada")
+        ? HttpStatus.NOT_FOUND
+        : mensaje.includes("pendiente")
+        ? HttpStatus.BAD_REQUEST
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+      throw new HttpException({ error: mensaje }, status);
     }
   }
 
   // PATCH /cancelaciones/:id/resolver
   // El admin resuelve una penalización pendiente: la deja descontada o la anula
   // por justificación válida.
-  async resolver(req: RequestAutenticada, res: Response): Promise<void> {
-    const id = req.params["id"];
-
-    if (!id) {
-      res.status(400).json({ error: "ID de penalización requerido" });
-      return;
-    }
-
-    const resultado = resolverSchema.safeParse(req.body);
-
-    if (!resultado.success) {
-      res.status(400).json({ error: "Datos inválidos", detalles: resultado.error.issues });
-      return;
-    }
-
-    if (req.usuario.rol !== "admin") {
-      res.status(403).json({ error: "Solo el admin puede resolver penalizaciones" });
-      return;
+  @Patch(":id/resolver")
+  async resolver(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(resolverSchema)) dto: ResolverInput,
+    @Usuario() usuario: UsuarioAutenticado,
+  ) {
+    if (usuario.rol !== "admin") {
+      throw new ForbiddenException("Solo el admin puede resolver penalizaciones");
     }
 
     try {
-      const penalizacion = await cancelacionesService.resolverPenalizacion(id as string, resultado.data);
-      res.status(200).json(penalizacion);
+      return await this.cancelacionesService.resolverPenalizacion(id, dto);
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : "Error al resolver la penalización";
-      const status = mensaje.includes("encontrada") ? 404 : mensaje.includes("resuelta") ? 400 : 500;
-      res.status(status).json({ error: mensaje });
+      const status = mensaje.includes("encontrada")
+        ? HttpStatus.NOT_FOUND
+        : mensaje.includes("resuelta")
+        ? HttpStatus.BAD_REQUEST
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+      throw new HttpException({ error: mensaje }, status);
     }
   }
 }
-
-export const cancelacionesController = new CancelacionesController();
