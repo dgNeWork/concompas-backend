@@ -22,12 +22,6 @@ export interface EstadoCuentaStripe {
   payouts_habilitados: boolean;
 }
 
-// DTO para crear un PaymentIntent al hacer una reserva.
-// El frontend usa el client_secret para mostrar el formulario de pago de Stripe.
-export interface CrearPaymentIntentDto {
-  trayecto_id: string;
-}
-
 // Respuesta al crear un PaymentIntent.
 // El client_secret es lo único que necesita el frontend para confirmar el pago.
 // Nunca debe enviarse la clave secreta de Stripe al frontend.
@@ -36,10 +30,8 @@ export interface PaymentIntentRespuesta {
   payment_intent_id: string;
 }
 
-// DTO para solicitar el retiro del saldo de incentivos acumulado.
-export interface RetirarIncentivoDto {
-  tipo_payout: "estandar" | "instantaneo";
-}
+// El DTO de entrada para solicitar un retiro vive junto a su schema de Zod
+// en ./dto/stripe.dto.ts (RetirarIncentivoInput).
 
 // Respuesta al procesar el retiro de incentivos.
 export interface RetiroIncentivoRespuesta {

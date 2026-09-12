@@ -11,11 +11,12 @@ import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import logger from "./config/logger";
 
-// Módulos que todavía no se han migrado a NestJS (Ticket 15, en curso).
-// Se montan como routers de Express clásicos mientras se completa la migración
-// módulo a módulo; se irán retirando de aquí según cada uno pase a Nest.
-import stripeRoutes from "./stripe/stripe.routes";
+// Módulo que todavía no se ha migrado a NestJS (Ticket 15, en curso).
+// Se monta como router de Express clásico mientras se completa la migración;
+// se retirará de aquí cuando pase a Nest.
 import cancelacionesRoutes from "./cancelaciones/cancelaciones.routes";
+// El webhook de Stripe se queda siempre aquí, aunque el resto del módulo ya
+// esté en Nest: necesita el body sin parsear (ver stripe.webhook.ts).
 import { stripeWebhookHandler } from "./stripe/stripe.webhook";
 
 async function bootstrap() {
@@ -45,9 +46,9 @@ async function bootstrap() {
   // que ya devolvía el backend en Express (ver el propio filtro para el detalle).
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // TODO(Ticket 15): retirar cada línea de aquí abajo según se migre su módulo a Nest.
   app.use("/stripe/webhook", stripeWebhookHandler);
-  app.use("/stripe", stripeRoutes);
+
+  // TODO(Ticket 15): retirar según se migre cancelaciones a Nest.
   app.use("/cancelaciones", cancelacionesRoutes);
 
   const port = process.env.PORT || 3000;

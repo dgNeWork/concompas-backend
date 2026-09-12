@@ -13,18 +13,20 @@
 //   5. Gestionar el retiro del wallet de incentivos del taxista
 // =============================================================================
 
+import { Injectable } from "@nestjs/common";
 import { stripe } from "../config/stripe";
-import { supabaseAdmin } from "../config/supabase";
+import { SupabaseService } from "../config/supabase.service";
+import { RetirarIncentivoInput } from "./dto/stripe.dto";
 import {
   OnboardingRespuesta,
   EstadoCuentaStripe,
   PaymentIntentRespuesta,
-  RetirarIncentivoDto,
   RetiroIncentivoRespuesta,
 } from "./stripe.types";
 
-
+@Injectable()
 export class StripeService {
+  constructor(private readonly supabaseService: SupabaseService) {}
 
   // ---------------------------------------------------------------------------
   // INICIAR ONBOARDING
@@ -39,9 +41,10 @@ export class StripeService {
     taxistaId: string,
     urlRetorno: string
   ): Promise<OnboardingRespuesta> {
+    const admin = this.supabaseService.admin;
 
     // Comprobamos si el taxista ya tiene una cuenta Connect en nuestra BD
-    const { data: cuentaExistente } = await supabaseAdmin
+    const { data: cuentaExistente } = await admin
       .from("taxistas_stripe_cuenta")
       .select("stripe_account_id, onboarding_completo")
       .eq("taxista_id", taxistaId)
@@ -81,7 +84,7 @@ export class StripeService {
 
       // Guardamos la cuenta en nuestra BD inmediatamente para no perderla
       // si el taxista cierra el navegador antes de completar el onboarding
-      const { error } = await supabaseAdmin
+      const { error } = await admin
         .from("taxistas_stripe_cuenta")
         .insert({
           taxista_id: taxistaId,
@@ -115,7 +118,7 @@ export class StripeService {
   // tiene payouts habilitados (necesario para recibir transferencias).
   // ---------------------------------------------------------------------------
   async obtenerEstadoCuenta(taxistaId: string): Promise<EstadoCuentaStripe> {
-    const { data } = await supabaseAdmin
+    const { data } = await this.supabaseService.admin
       .from("taxistas_stripe_cuenta")
       .select("stripe_account_id, onboarding_completo, payouts_habilitados")
       .eq("taxista_id", taxistaId)
@@ -154,9 +157,10 @@ export class StripeService {
     trayectoId: string,
     clienteId: string
   ): Promise<PaymentIntentRespuesta> {
+    const admin = this.supabaseService.admin;
 
     // Leemos el trayecto para obtener el importe y verificar que pertenece al cliente
-    const { data: trayecto, error } = await supabaseAdmin
+    const { data: trayecto, error } = await admin
       .from("trayectos")
       .select("precio_cliente, cliente_id, estado, stripe_payment_intent_id")
       .eq("id", trayectoId)
@@ -184,12 +188,12 @@ export class StripeService {
 
     // Guardamos el PaymentIntent tanto en el trayecto como en la tabla de pagos
     await Promise.all([
-      supabaseAdmin
+      admin
         .from("trayectos")
         .update({ stripe_payment_intent_id: paymentIntent.id })
         .eq("id", trayectoId),
 
-      supabaseAdmin.from("pagos").insert({
+      admin.from("pagos").insert({
         cliente_id: clienteId,
         trayecto_id: trayectoId,
         stripe_payment_intent_id: paymentIntent.id,
@@ -218,15 +222,16 @@ export class StripeService {
   // taxistas_perfil.incentivo_acumulado y el taxista lo retira cuando quiere.
   // ---------------------------------------------------------------------------
   async capturarPagoYTransferir(trayectoId: string): Promise<void> {
+    const admin = this.supabaseService.admin;
 
     // Leemos el trayecto y el pago en paralelo
     const [{ data: trayecto }, { data: pago }] = await Promise.all([
-      supabaseAdmin
+      admin
         .from("trayectos")
         .select("taxista_titular_id, importe_taxista, stripe_payment_intent_id")
         .eq("id", trayectoId)
         .single(),
-      supabaseAdmin
+      admin
         .from("pagos")
         .select("id, stripe_payment_intent_id, estado, importe_total, importe_taxista")
         .eq("trayecto_id", trayectoId)
@@ -239,7 +244,7 @@ export class StripeService {
     if (!trayecto.taxista_titular_id) throw new Error("El trayecto no tiene taxista titular asignado");
 
     // Obtenemos la cuenta Stripe del taxista
-    const { data: cuentaStripe } = await supabaseAdmin
+    const { data: cuentaStripe } = await admin
       .from("taxistas_stripe_cuenta")
       .select("stripe_account_id, onboarding_completo")
       .eq("taxista_id", trayecto.taxista_titular_id)
@@ -266,7 +271,7 @@ export class StripeService {
 
     // Paso 3: Actualizamos la BD con el resultado
     await Promise.all([
-      supabaseAdmin
+      admin
         .from("pagos")
         .update({
           estado: "capturado",
@@ -276,7 +281,7 @@ export class StripeService {
         })
         .eq("id", pago.id),
 
-      supabaseAdmin.from("transferencias_taxista").insert({
+      admin.from("transferencias_taxista").insert({
         taxista_id: trayecto.taxista_titular_id,
         pago_id: pago.id,
         stripe_transfer_id: transfer.id,
@@ -299,8 +304,9 @@ export class StripeService {
   // Si no se especifica, reembolsa el importe total.
   // ---------------------------------------------------------------------------
   async reembolsarPago(trayectoId: string, importeParcial?: number): Promise<void> {
+    const admin = this.supabaseService.admin;
 
-    const { data: pago } = await supabaseAdmin
+    const { data: pago } = await admin
       .from("pagos")
       .select("id, stripe_payment_intent_id, estado, importe_total")
       .eq("trayecto_id", trayectoId)
@@ -323,7 +329,7 @@ export class StripeService {
       throw new Error(`No se puede reembolsar un pago en estado '${pago.estado}'`);
     }
 
-    await supabaseAdmin
+    await admin
       .from("pagos")
       .update({
         estado: "reembolsado",
@@ -346,8 +352,9 @@ export class StripeService {
   // "Para Ya!" sin checkout iniciado), no hacemos nada: no hay nada que capturar.
   // ---------------------------------------------------------------------------
   async capturarParcialOCancelar(trayectoId: string, porcentaje: number): Promise<void> {
+    const admin = this.supabaseService.admin;
 
-    const { data: pago } = await supabaseAdmin
+    const { data: pago } = await admin
       .from("pagos")
       .select("id, stripe_payment_intent_id, estado, importe_total")
       .eq("trayecto_id", trayectoId)
@@ -362,7 +369,7 @@ export class StripeService {
     if (porcentaje <= 0) {
       await stripe.paymentIntents.cancel(pago.stripe_payment_intent_id);
 
-      await supabaseAdmin
+      await admin
         .from("pagos")
         .update({
           estado: "reembolsado",
@@ -381,7 +388,7 @@ export class StripeService {
       amount_to_capture: Math.round(importeCapturado * 100),
     });
 
-    await supabaseAdmin
+    await admin
       .from("pagos")
       .update({
         estado: "capturado",
@@ -404,17 +411,18 @@ export class StripeService {
   // ---------------------------------------------------------------------------
   async retirarIncentivo(
     taxistaId: string,
-    datos: RetirarIncentivoDto
+    datos: RetirarIncentivoInput
   ): Promise<RetiroIncentivoRespuesta> {
+    const admin = this.supabaseService.admin;
 
     // Leemos el perfil del taxista para saber cuánto tiene disponible
     const [{ data: perfil }, { data: cuentaStripe }] = await Promise.all([
-      supabaseAdmin
+      admin
         .from("taxistas_perfil")
         .select("incentivo_acumulado, penalizacion_pendiente")
         .eq("profile_id", taxistaId)
         .single(),
-      supabaseAdmin
+      admin
         .from("taxistas_stripe_cuenta")
         .select("stripe_account_id, onboarding_completo, payouts_habilitados")
         .eq("taxista_id", taxistaId)
@@ -451,7 +459,7 @@ export class StripeService {
 
     // Actualizamos el perfil del taxista y registramos el retiro en la BD
     await Promise.all([
-      supabaseAdmin
+      admin
         .from("taxistas_perfil")
         .update({
           incentivo_acumulado: 0,
@@ -459,7 +467,7 @@ export class StripeService {
         })
         .eq("profile_id", taxistaId),
 
-      supabaseAdmin.from("retiros_incentivo").insert({
+      admin.from("retiros_incentivo").insert({
         taxista_id: taxistaId,
         importe_solicitado: importeNeto,
         importe_recibido: importeRecibido,
@@ -487,7 +495,7 @@ export class StripeService {
   async sincronizarCuentaDesdeWebhook(stripeAccountId: string): Promise<void> {
     const cuenta = await stripe.accounts.retrieve(stripeAccountId);
 
-    await supabaseAdmin
+    await this.supabaseService.admin
       .from("taxistas_stripe_cuenta")
       .update({
         onboarding_completo: cuenta.charges_enabled && cuenta.details_submitted,
@@ -497,4 +505,7 @@ export class StripeService {
   }
 }
 
-export const stripeService = new StripeService();
+// NOTA (Ticket 15): instancia usada todavía por stripe.webhook.ts (handler de
+// Express sin migrar, necesita body raw) y por cancelaciones.service.ts, que
+// tampoco se ha migrado a Nest. Se elimina cuando ambos pasen a Nest.
+export const stripeService = new StripeService(new SupabaseService());

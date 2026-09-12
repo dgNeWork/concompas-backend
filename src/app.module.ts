@@ -4,12 +4,17 @@ import { SupabaseModule } from "./config/supabase.module";
 import { AuthModule } from "./auth/auth.module";
 import { MapsModule } from "./maps/maps.module";
 import { TrayectosModule } from "./trayectos/trayectos.module";
+import { StripeModule } from "./stripe/stripe.module";
 
-// Módulos de negocio pendientes de migrar a Nest (Ticket 15, en curso):
-// stripe, cancelaciones. Mientras tanto siguen montados como routers de
-// Express clásicos directamente en main.ts. Se irán añadiendo aquí según se completen.
+// Módulo de negocio pendiente de migrar a Nest (Ticket 15, en curso):
+// cancelaciones. Mientras tanto sigue montado como router de Express clásico
+// directamente en main.ts.
+//
+// El webhook de Stripe (POST /stripe/webhook) NO está en StripeModule: sigue
+// siendo un handler de Express aparte, montado en main.ts, porque necesita
+// el body sin parsear (ver stripe.webhook.ts).
 @Module({
-  imports: [SupabaseModule, AuthModule, MapsModule, TrayectosModule],
+  imports: [SupabaseModule, AuthModule, MapsModule, TrayectosModule, StripeModule],
   controllers: [AppController],
 })
 export class AppModule {}
