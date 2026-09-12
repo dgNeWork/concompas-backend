@@ -21,6 +21,11 @@
     // Modo estricto: obliga a tipar bien el código y evita errores silenciosos
     "strict": true,
 
+    // NestJS usa decoradores (@Controller, @Injectable...) para la inyección de
+    // dependencias y el registro de rutas. Sin estas dos opciones no compilan.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
     // Evita problemas de compatibilidad entre módulos de distintos sistemas
     "esModuleInterop": true,
     "skipLibCheck": true,

@@ -18,29 +18,13 @@ export interface UsuarioAutenticado {
 // Extensión del tipo Request de Express para incluir el usuario autenticado.
 // En las rutas protegidas, el middleware rellena req.usuario antes de llegar
 // al controlador, así que podemos acceder a él con tipado correcto sin castings.
+// NOTA (Ticket 15): usada por los módulos que aún no se han migrado a NestJS
+// (maps, trayectos, stripe, cancelaciones) junto con el middleware autenticar().
+// Se retira cuando el último de esos módulos pase a Nest, donde el usuario
+// autenticado se obtiene con el decorador @Usuario() en vez de este cast.
 export interface RequestAutenticada extends Request {
   usuario: UsuarioAutenticado;
 }
 
-// DTO (Data Transfer Object) para el registro de un nuevo usuario.
-// Un DTO define exactamente qué datos esperamos recibir del cliente para una operación.
-// Separa la forma del dato entrante de la lógica de negocio interna.
-export interface RegistroDto {
-  email: string;
-  password: string;
-  nombre: string;
-  apellidos: string;
-  documento_identidad: string;
-  telefono: string;
-  rol: "cliente" | "taxista";
-  // Campo opcional exclusivo de clientes
-  direccion_habitual?: string;
-  // Campo opcional exclusivo de taxistas
-  es_titular?: boolean;
-}
-
-// DTO para el inicio de sesión
-export interface LoginDto {
-  email: string;
-  password: string;
-}
+// Los DTOs de registro y login viven ahora junto a sus schemas de Zod en
+// ./dto/registro.dto.ts y ./dto/login.dto.ts.

@@ -6,18 +6,21 @@
 //
 // IMPORTANTE: Este handler necesita el body de la request SIN parsear (Buffer raw),
 // no como JSON, porque Stripe usa el body exacto para verificar su firma digital.
-// Por eso se registra en index.ts ANTES de express.json() con express.raw().
+// En main.ts se arranca Nest con { rawBody: true }, lo que deja ese Buffer
+// disponible en req.rawBody en todas las peticiones sin dejar de parsear
+// req.body como JSON con normalidad para el resto de rutas.
 //
 // Sin verificación de firma, cualquiera podría enviarnos eventos falsos.
 // =============================================================================
 
+import { RawBodyRequest } from "@nestjs/common";
 import { Request, Response } from "express";
 import { stripe } from "../config/stripe";
 import { stripeService } from "./stripe.service";
 import logger from "../config/logger";
 
 
-export async function stripeWebhookHandler(req: Request, res: Response): Promise<void> {
+export async function stripeWebhookHandler(req: RawBodyRequest<Request>, res: Response): Promise<void> {
   const firma = req.headers["stripe-signature"];
 
   if (!firma) {
@@ -33,9 +36,9 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
 
   let evento;
   try {
-    // Verificamos la firma usando el body raw (req.body es un Buffer aquí, no un objeto)
+    // Verificamos la firma usando el body raw capturado por Nest (Buffer, no el req.body ya parseado)
     evento = stripe.webhooks.constructEvent(
-      req.body,
+      req.rawBody!,
       firma,
       process.env.STRIPE_WEBHOOK_SECRET
     );
