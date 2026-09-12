@@ -15,21 +15,25 @@
 //   5. Cambiar el estado de un trayecto con las validaciones de negocio
 // =============================================================================
 
-import { supabaseAdmin } from "../config/supabase";
+import { Injectable } from "@nestjs/common";
+import { SupabaseService } from "../config/supabase.service";
 import { mapsService } from "../maps/maps.service";
+// NOTA (Ticket 15): stripe y cancelaciones aún no se han migrado a Nest, así
+// que se siguen usando sus instancias singleton. Cuando se migren, este
+// servicio pasará a recibirlos por inyección de dependencias igual que SupabaseService.
 import { stripeService } from "../stripe/stripe.service";
 import { cancelacionesService } from "../cancelaciones/cancelaciones.service";
 import {
-  CrearTrayectoDto,
-  AceptarTrayectoDto,
-  CambiarEstadoDto,
-  TrayectoRespuesta,
-  EstadoTrayecto,
-} from "./trayectos.types";
+  CrearTrayectoInput,
+  AceptarTrayectoInput,
+  CambiarEstadoInput,
+} from "./dto/trayectos.dto";
+import { TrayectoRespuesta, EstadoTrayecto } from "./trayectos.types";
 import { RolUsuario } from "../auth/auth.types";
 
-
+@Injectable()
 export class TrayectosService {
+  constructor(private readonly supabaseService: SupabaseService) {}
 
   // ---------------------------------------------------------------------------
   // CREAR TRAYECTO
@@ -40,7 +44,7 @@ export class TrayectosService {
   // ---------------------------------------------------------------------------
   async crearTrayecto(
     clienteId: string,
-    datos: CrearTrayectoDto
+    datos: CrearTrayectoInput
   ): Promise<TrayectoRespuesta> {
 
     // Calculamos la duración estimada del trayecto con Google Maps.
@@ -60,7 +64,7 @@ export class TrayectosService {
     // Construimos el objeto para insertar en Supabase.
     // Las coordenadas se guardan con la función ST_MakePoint de PostGIS:
     // GEOMETRY(POINT, 4326) requiere el formato WKT 'POINT(lng lat)' (longitud primero).
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("trayectos")
       .insert({
         cliente_id: clienteId,
@@ -114,7 +118,7 @@ export class TrayectosService {
     }
 
     // Admin: devuelve todos sin filtro
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("trayectos")
       .select("*")
       .order("created_at", { ascending: false });
@@ -134,7 +138,7 @@ export class TrayectosService {
     rol: RolUsuario
   ): Promise<TrayectoRespuesta> {
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("trayectos")
       .select("*")
       .eq("id", trayectoId)
@@ -173,14 +177,14 @@ export class TrayectosService {
   async aceptarTrayecto(
     trayectoId: string,
     taxistaId: string,
-    datos: AceptarTrayectoDto
+    datos: AceptarTrayectoInput
   ): Promise<TrayectoRespuesta> {
 
     // Leemos el trayecto y el perfil del taxista en paralelo
     const [{ data: trayecto, error: errTrayecto }, { data: perfilTaxista, error: errPerfil }] =
       await Promise.all([
-        supabaseAdmin.from("trayectos").select("*").eq("id", trayectoId).single(),
-        supabaseAdmin.from("taxistas_perfil").select("municipio_licencia").eq("profile_id", taxistaId).single(),
+        this.supabaseService.admin.from("trayectos").select("*").eq("id", trayectoId).single(),
+        this.supabaseService.admin.from("taxistas_perfil").select("municipio_licencia").eq("profile_id", taxistaId).single(),
       ]);
 
     if (errTrayecto || !trayecto) throw new Error("Trayecto no encontrado");
@@ -241,7 +245,7 @@ export class TrayectosService {
           // El estado permanece 'asignado'; ya lo estaba desde que entró el titular
         };
 
-    const { data: actualizado, error: errUpdate } = await supabaseAdmin
+    const { data: actualizado, error: errUpdate } = await this.supabaseService.admin
       .from("trayectos")
       .update(camposUpdate)
       .eq("id", trayectoId)
@@ -271,10 +275,10 @@ export class TrayectosService {
     trayectoId: string,
     usuarioId: string,
     rol: RolUsuario,
-    datos: CambiarEstadoDto
+    datos: CambiarEstadoInput
   ): Promise<TrayectoRespuesta> {
 
-    const { data: trayecto, error } = await supabaseAdmin
+    const { data: trayecto, error } = await this.supabaseService.admin
       .from("trayectos")
       .select("*")
       .eq("id", trayectoId)
@@ -312,7 +316,7 @@ export class TrayectosService {
       // TODO Ticket notificaciones: avisar para buscar nuevo suplente
     }
 
-    const { data: actualizado, error: errUpdate } = await supabaseAdmin
+    const { data: actualizado, error: errUpdate } = await this.supabaseService.admin
       .from("trayectos")
       .update({
         estado: camposExtra.estado ?? datos.estado,
@@ -354,7 +358,7 @@ export class TrayectosService {
 
   // Devuelve los trayectos de un cliente concreto, ordenados por fecha de recogida.
   private async listarTrayectosCliente(clienteId: string): Promise<TrayectoRespuesta[]> {
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await this.supabaseService.admin
       .from("trayectos")
       .select("*")
       .eq("cliente_id", clienteId)
@@ -374,7 +378,7 @@ export class TrayectosService {
   private async listarTrayectosDisponiblesParaTaxista(taxistaId: string): Promise<TrayectoRespuesta[]> {
 
     // Obtenemos el municipio de licencia del taxista
-    const { data: perfil, error: errPerfil } = await supabaseAdmin
+    const { data: perfil, error: errPerfil } = await this.supabaseService.admin
       .from("taxistas_perfil")
       .select("municipio_licencia")
       .eq("profile_id", taxistaId)
@@ -388,7 +392,7 @@ export class TrayectosService {
 
     // Traemos los trayectos candidatos: pendientes o asignados (sin suplente aún)
     // y que el taxista no tiene ya asignados
-    const { data: trayectos, error } = await supabaseAdmin
+    const { data: trayectos, error } = await this.supabaseService.admin
       .from("trayectos")
       .select("*")
       .in("estado", ["pendiente", "asignado"])
@@ -404,7 +408,7 @@ export class TrayectosService {
     const fechaMin = trayectos[0].fecha_hora_recogida;
     const fechaMax = trayectos[trayectos.length - 1].fecha_hora_recogida;
 
-    const { data: eventos } = await supabaseAdmin
+    const { data: eventos } = await this.supabaseService.admin
       .from("eventos_especiales_provincia")
       .select("fecha_inicio, fecha_fin")
       .eq("activo", true)
@@ -453,7 +457,7 @@ export class TrayectosService {
 
     // Comprobamos primero la excepción de eventos especiales
     const fechaRecogida = (trayecto.fecha_hora_recogida as string).substring(0, 10);
-    const { data: eventos } = await supabaseAdmin
+    const { data: eventos } = await this.supabaseService.admin
       .from("eventos_especiales_provincia")
       .select("id")
       .eq("activo", true)
@@ -559,5 +563,3 @@ export class TrayectosService {
     };
   }
 }
-
-export const trayectosService = new TrayectosService();

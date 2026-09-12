@@ -32,41 +32,9 @@ export type EstadoTrayecto =
 
 
 // ----------------------------------------------------------------------------
-// DTOs — formas de los datos que entran y salen por la API
+// DTOs de entrada — viven junto a sus schemas de Zod en ./dto/trayectos.dto.ts
+// (CrearTrayectoInput, AceptarTrayectoInput, CambiarEstadoInput).
 // ----------------------------------------------------------------------------
-
-// Datos que el cliente envía al crear una reserva.
-// Los importes económicos los calcula el backend, no el cliente.
-export interface CrearTrayectoDto {
-  origen_texto: string;
-  origen_lat: number;
-  origen_lng: number;
-  destino_texto: string;
-  destino_lat: number;
-  destino_lng: number;
-  fecha_hora_recogida: string;        // ISO 8601
-  tipo_reserva: TipoReserva;
-  tipo_punto_origen: TipoPunto;
-  tipo_punto_destino: TipoPunto;
-  precio_cliente: number;             // Lo introduce el frontend (calculado con tarifas pactadas)
-  comision_plataforma: number;        // Importe fijo que se queda ConCompas
-  importe_taxista: number;            // Lo que recibe el taxista (precio_cliente - comision_plataforma)
-  notas_cliente?: string;
-}
-
-// Datos que el taxista envía al aceptar una reserva.
-// El vehículo es opcional: puede asignarlo ahora o más tarde (hasta que el trayecto esté en_curso).
-export interface AceptarTrayectoDto {
-  vehiculo_id?: string;
-}
-
-// Datos para cambiar el estado de un trayecto.
-// Solo el taxista titular puede llevarlo a confirmado / en_curso / completado.
-// El cliente solo puede cancelarlo.
-export interface CambiarEstadoDto {
-  estado: EstadoTrayecto;
-  motivo_cancelacion?: string;        // Obligatorio si estado === "cancelado"
-}
 
 // Forma del trayecto tal como lo devuelve la API (incluye campos calculados por el backend)
 export interface TrayectoRespuesta {
