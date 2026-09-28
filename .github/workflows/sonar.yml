@@ -21,14 +21,20 @@ jobs:
         with:
           node-version: 22
 
+      # --ignore-scripts impide que las dependencias ejecuten sus propios scripts
+      # de instalación dentro del CI, donde está disponible el SONAR_TOKEN
+      # (protección frente a paquetes comprometidos). Los tests no los necesitan.
       - name: Instalar dependencias
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Tests con cobertura
         run: npm run test:cov
 
+      # Acción fijada al SHA exacto de la v8.2.2 en vez de a la etiqueta "v8",
+      # que su autor podría mover a otro código. Para actualizarla, cambiar el
+      # SHA y el comentario de versión a la vez.
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v8
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
